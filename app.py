@@ -17,13 +17,12 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-from reportlab.lib.pagesizes import letter, landscape 
 from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter, landscape
-from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 from reportlab.lib.units import inch
+from reportlab.lib.pagesizes import letter, landscape 
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 
 # Define external stylesheets for Dash
@@ -33,14 +32,12 @@ external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 app = Dash(__name__, external_stylesheets=external_stylesheets)
 server = app.server
 
-# Define layout for the app
-import dash_core_components as dcc
-import dash_html_components as html
 
 app.layout = html.Div(
     [
         html.Div(
             [
+                html.H1(children='Diabetes Dataset Analytics', style={'textAlign': 'center'}),
                 dcc.Upload(
                     id='upload-data',
                     children=html.Button('Select Files', style={
@@ -139,6 +136,11 @@ app.layout = html.Div(
     }
 )
 
+import plotly.io as pio
+
+def save_fig(fig, filename):
+    pio.write_image(fig, filename)
+
 # Function to parse uploaded contents
 def parse_contents(contents, filename):
     content_type, content_string = contents.split(',')
@@ -154,6 +156,30 @@ def parse_contents(contents, filename):
             'There was an error processing this file.'
         ])
     return df
+
+
+import re
+
+def sanitize_html(content):
+    # Remove unsupported HTML tags
+    content = re.sub(r'<br\s*/?>', '\n', content)  # Replace <br> with newline
+    content = re.sub(r'<.*?>', '', content)  # Remove any other HTML tags
+    return content
+
+outputs_storage = {}
+
+def capture_output(func):
+    def wrapper(*args, **kwargs):
+        result = func(*args, **kwargs)
+        if isinstance(result, list):
+            result_str = ''.join([str(r) for r in result])
+            sanitized_result = sanitize_html(result_str)
+            outputs_storage[func.__name__] = sanitized_result
+        else:
+            outputs_storage[func.__name__] = sanitize_html(str(result))
+        return result
+    return wrapper
+
 
 # Callback to update output data upload
 @app.callback(
@@ -178,6 +204,7 @@ def update_output(contents, filename):
     State('upload-data', 'contents'),
     State('upload-data', 'filename')
 )
+@capture_output
 def show_info(n_clicks, contents, filename):
     if n_clicks and contents is not None:
         df = parse_contents(contents, filename)
@@ -236,6 +263,7 @@ def convert_to_categorical(n_clicks, selected_columns, contents, filename):
     State('upload-data', 'contents'),
     State('upload-data', 'filename')
 )
+@capture_output
 def show_summary_statistics(n_clicks, selected_columns, contents, filename):
     if n_clicks and contents is not None:
         df = parse_contents(contents, filename)
@@ -370,6 +398,7 @@ def store_dataframe(n_clicks, contents, filename):
     [State('upload-data', 'contents'),
      State('upload-data', 'filename')]
 )
+@capture_output
 def resample_data_and_display_table(n_clicks, contents, filename):
     if n_clicks and contents is not None:
         df = parse_contents(contents, filename)
@@ -407,6 +436,7 @@ def resample_data_and_display_table(n_clicks, contents, filename):
     [State('model-dropdown', 'value'),
      State('stored-df', 'children')]  # Retrieve the stored DataFrame
 )
+@capture_output
 def evaluate_models_and_display_metrics(n_clicks, selected_models, stored_df_json):
     if n_clicks and selected_models and stored_df_json:
         try:
@@ -543,7 +573,6 @@ def generate_report(n_clicks, contents, filename):
         return html.Div(f'Report generated successfully as "{report_file}". Please check your server directory.')
     
     return html.Div("Please upload a file and click 'Generate Report' to view the output.")
-
 
 
 @app.callback(
